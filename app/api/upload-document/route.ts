@@ -1,15 +1,19 @@
+// app/api/upload-document/route.ts
 
 import { NextRequest, NextResponse } from 'next/server';
 
 export async function POST(request: NextRequest) {
   try {
+    // Get the FormData from client
     const formData = await request.formData();
     
+    // Forward to N8N webhook
     const response = await fetch(
       'https://serbay.app.n8n.cloud/webhook/87f97854-d2b0-4c35-baf8-4ed9d48ef702',
       {
         method: 'POST',
         body: formData,
+        // N8N server-to-server call me CORS issue nahi hoga
       }
     );
 
@@ -49,14 +53,14 @@ export async function POST(request: NextRequest) {
     );
   } catch (error) {
     console.error('Proxy error:', error);
-    const errorMessage = error instanceof Error ? error.message : 'Internal server error';
     return NextResponse.json(
-      { error: errorMessage },
+      { error: error.message || 'Internal server error' },
       { status: 500 }
     );
   }
 }
 
+// Handle OPTIONS preflight request
 export async function OPTIONS(request: NextRequest) {
   return new NextResponse(null, {
     status: 204,

@@ -1,5 +1,4 @@
-'use client'
-import React, { useState, ChangeEvent, DragEvent } from 'react';
+import React, { useState, useEffect, ChangeEvent, DragEvent } from 'react';
 import { Upload, FileText, Zap, CheckCircle, Sparkles, AlertCircle, ExternalLink, Loader2 } from 'lucide-react';
 
 export default function ContentForgeAI() {
@@ -9,8 +8,9 @@ export default function ContentForgeAI() {
   const [isSubmitted, setIsSubmitted] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [processingStage, setProcessingStage] = useState('');
-  const [downloadLink, setDownloadLink] = useState('');
   const [resultLink, setResultLink] = useState('');
+  const [jobId, setJobId] = useState('');
+  const [pollingAttempts, setPollingAttempts] = useState(0);
 
   const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
     const selectedFile = e.target.files?.[0];
@@ -58,18 +58,29 @@ export default function ContentForgeAI() {
     formData.append('data', file);
 
     try {
-      // Simulate processing stages for better UX
-      setTimeout(() => setProcessingStage('Analyzing document structure...'), 4000);
-      setTimeout(() => setProcessingStage('Extracting key requirements...'), 8000);
-      setTimeout(() => setProcessingStage('Researching top competitors...'), 8000);
-      setTimeout(() => setProcessingStage('Optimizing for YMYL & SEO...'), 8000);
-      setTimeout(() => setProcessingStage('Generating premium content...'), 12000);
-      setTimeout(() => setProcessingStage('Finalizing your article...'), 14000);
+      // Stage updates
+      const stageInterval = setInterval(() => {
+        const stages = [
+          'Uploading your content brief...',
+          'Analyzing document structure...',
+          'Extracting key requirements...',
+          'Researching top competitors...',
+          'Optimizing for YMYL & SEO...',
+          'Generating premium content...',
+          'Finalizing your article...'
+        ];
+        const currentIndex = stages.indexOf(processingStage);
+        if (currentIndex < stages.length - 1) {
+          setProcessingStage(stages[currentIndex + 1]);
+        }
+      }, 8000);
 
       const response = await fetch('/api/upload-document', {
         method: 'POST',
         body: formData,
       });
+
+      clearInterval(stageInterval);
 
       if (!response.ok) {
         const errorData = await response.json();
@@ -79,22 +90,65 @@ export default function ContentForgeAI() {
       const result = await response.json();
       console.log('Success:', result);
       
-      // Extract webViewLink from response
-      if (result.data && result.data.webViewLink) {
+      if (result.data?.webViewLink) {
         setResultLink(result.data.webViewLink);
+        setIsSubmitted(true);
+        setIsSubmitting(false);
+        setProcessingStage('');
+      } else if (result.jobId) {
+        setJobId(result.jobId);
+        startPolling(result.jobId);
+      } else {
+        throw new Error('Invalid response from server');
       }
-      
-      setIsSubmitted(true);
-      setIsSubmitting(false);
-      setProcessingStage('');
       
     } catch (err) {
       console.error('Error:', err);
       const errorMessage = err instanceof Error ? err.message : 'Unknown error';
-      setError(`Failed to submit: ${errorMessage}. Please try again.`);
-      setIsSubmitting(false);
-      setProcessingStage('');
+      
+      if (errorMessage.includes('524') || errorMessage.includes('timeout')) {
+        setError('Processing is taking longer than expected. Your content is still being generated. Please wait...');
+
+        setProcessingStage('Still processing - this may take up to 2 minutes...');
+      } else {
+        setError(`Failed to submit: ${errorMessage}. Please try again.`);
+        setIsSubmitting(false);
+        setProcessingStage('');
+      }
     }
+  };
+
+  const startPolling = (id: string) => {
+    setProcessingStage('Checking processing status...');
+    
+    const pollInterval = setInterval(async () => {
+      try {
+        const response = await fetch(`/api/check-status?jobId=${id}`);
+        const result = await response.json();
+        
+        if (result.status === 'completed' && result.data?.webViewLink) {
+          clearInterval(pollInterval);
+          setResultLink(result.data.webViewLink);
+          setIsSubmitted(true);
+          setIsSubmitting(false);
+          setProcessingStage('');
+        } else if (result.status === 'failed') {
+          clearInterval(pollInterval);
+          setError('Processing failed. Please try again.');
+          setIsSubmitting(false);
+          setProcessingStage('');
+        } else {
+          setPollingAttempts(prev => prev + 1);
+          if (pollingAttempts > 40) { // Max 2 minutes (40 * 3s)
+            clearInterval(pollInterval);
+            setError('Processing timeout. Please contact support.');
+            setIsSubmitting(false);
+          }
+        }
+      } catch (err) {
+        console.error('Polling error:', err);
+      }
+    }, 3000); // Poll every 3 seconds
   };
 
   const handleReset = () => {
@@ -104,12 +158,8 @@ export default function ContentForgeAI() {
     setIsSubmitting(false);
     setProcessingStage('');
     setResultLink('');
-  };
-
-  const handleDownload = () => {
-    if (downloadLink) {
-      window.open(downloadLink, '_blank');
-    }
+    setJobId('');
+    setPollingAttempts(0);
   };
 
   return (
@@ -171,17 +221,23 @@ export default function ContentForgeAI() {
                       <span>✓ Document uploaded</span>
                     </div>
                     <div className="flex items-center justify-between text-sm text-blue-200">
-                      <span>- AI analysis in progress</span>
+                      <span>⏳ AI analysis in progress</span>
                     </div>
                     <div className="flex items-center justify-between text-sm text-blue-200">
-                      <span>- Competitor research</span>
+                      <span>⏳ Competitor research</span>
                     </div>
                     <div className="flex items-center justify-between text-sm text-blue-200">
-                      <span>- SEO optimization</span>
+                      <span>⏳ SEO optimization</span>
                     </div>
                   </div>
 
-                  <p className="text-blue-300/70 text-sm">This usually takes 30-50 seconds...</p>
+                  <p className="text-blue-300/70 text-sm">This may take 1-2 minutes for complex documents...</p>
+                  
+                  {error && !error.includes('524') && (
+                    <div className="mt-4 p-4 bg-red-500/10 border border-red-500/30 rounded-lg">
+                      <p className="text-red-200 text-sm">{error}</p>
+                    </div>
+                  )}
                 </div>
               ) : !isSubmitted ? (
                 <div className="bg-gray-900/50 backdrop-blur-xl border border-blue-500/20 rounded-2xl p-8 shadow-2xl">
@@ -250,7 +306,7 @@ export default function ContentForgeAI() {
                   
                   <div>
                     <h3 className="text-3xl font-bold text-white mb-2">Content Generated Successfully!</h3>
-                    <p className="text-blue-200/80 text-lg">Your SEO-optimized article is ready for download</p>
+                    <p className="text-blue-200/80 text-lg">Your SEO-optimized article is ready</p>
                   </div>
 
                   <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-4 max-w-md mx-auto">
@@ -323,4 +379,4 @@ export default function ContentForgeAI() {
       </div>
     </div>
   );
-}
+},
