@@ -1,17 +1,18 @@
 'use client'
-import React, { useState } from 'react';
+import React, { useState, ChangeEvent, DragEvent } from 'react';
 import { Upload, FileText, Zap, CheckCircle, Sparkles, AlertCircle, ExternalLink, Loader2 } from 'lucide-react';
 
 export default function ContentForgeAI() {
-  const [file, setFile] = useState(null);
+  const [file, setFile] = useState<File | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [error, setError] = useState('');
   const [isSubmitted, setIsSubmitted] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [processingStage, setProcessingStage] = useState('');
+  const [downloadLink, setDownloadLink] = useState('');
   const [resultLink, setResultLink] = useState('');
 
-  const handleFileChange = (e) => {
+  const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
     const selectedFile = e.target.files?.[0];
     if (selectedFile && selectedFile.type === 'application/pdf') {
       setFile(selectedFile);
@@ -21,17 +22,17 @@ export default function ContentForgeAI() {
     }
   };
 
-  const handleDragOver = (e) => {
+  const handleDragOver = (e: DragEvent<HTMLDivElement>) => {
     e.preventDefault();
     setIsDragging(true);
   };
 
-  const handleDragLeave = (e) => {
+  const handleDragLeave = (e: DragEvent<HTMLDivElement>) => {
     e.preventDefault();
     setIsDragging(false);
   };
 
-  const handleDrop = (e) => {
+  const handleDrop = (e: DragEvent<HTMLDivElement>) => {
     e.preventDefault();
     setIsDragging(false);
     const droppedFile = e.dataTransfer.files?.[0];
@@ -89,7 +90,8 @@ export default function ContentForgeAI() {
       
     } catch (err) {
       console.error('Error:', err);
-      setError(`Failed to submit: ${err.message}. Please try again.`);
+      const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+      setError(`Failed to submit: ${errorMessage}. Please try again.`);
       setIsSubmitting(false);
       setProcessingStage('');
     }
@@ -199,7 +201,7 @@ export default function ContentForgeAI() {
                         ? 'border-blue-400 bg-blue-500/10' 
                         : 'border-blue-500/30 hover:border-blue-400 hover:bg-blue-500/5'
                     }`}
-                    onClick={() => document.getElementById('fileInput').click()}
+                    onClick={() => document.getElementById('fileInput')?.click()}
                   >
                     <input
                       id="fileInput"
